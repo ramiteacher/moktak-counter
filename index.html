@@ -456,23 +456,23 @@
         <section>
           <h2 class="section-title">리듬 선택</h2>
           <div class="button-grid" id="rhythmButtons">
-            <button type="button" data-rhythm="steady" class="selected">정박</button>
-            <button type="button" data-rhythm="irregular">엇박</button>
-            <button type="button" data-rhythm="signal">신호용 박자</button>
+            <button type="button" data-rhythm="yebul" class="selected">예불 정박</button>
+            <button type="button" data-rhythm="chant">독경 유동박</button>
+            <button type="button" data-rhythm="samta">삼타 신호박</button>
           </div>
-          <p id="rhythmDesc" class="rhythm-desc">정박: 선택된 BPM 기준으로 일정한 간격으로 목탁 소리가 납니다.</p>
+          <p id="rhythmDesc" class="rhythm-desc">예불 정박: 예불과 염불 수행처럼 차분하고 고르게 이어지는 기본 목탁 박자입니다.</p>
         </section>
 
         <section>
           <h2 class="section-title">속도 조절</h2>
           <div class="speed-row" id="speedButtons">
-            <button type="button" data-bpm="45">느림</button>
-            <button type="button" data-bpm="60" class="selected">보통</button>
-            <button type="button" data-bpm="90">빠름</button>
+            <button type="button" data-bpm="48">느림</button>
+            <button type="button" data-bpm="64" class="selected">보통</button>
+            <button type="button" data-bpm="84">빠름</button>
           </div>
           <div class="slider-row">
-            <input id="bpmSlider" type="range" min="40" max="120" value="60" step="1" aria-label="BPM 속도 조절" />
-            <span><span id="bpmValue">60</span>BPM</span>
+            <input id="bpmSlider" type="range" min="40" max="120" value="64" step="1" aria-label="BPM 속도 조절" />
+            <span><span id="bpmValue">64</span>BPM</span>
           </div>
         </section>
 
@@ -498,8 +498,8 @@
 
         <section class="status-box" aria-live="polite">
           목표 횟수: <b><span id="statusTarget">108</span>번</b><br />
-          리듬: <b><span id="statusRhythm">정박</span></b><br />
-          속도: <b><span id="statusBpm">60</span>BPM</b>
+          리듬: <b><span id="statusRhythm">예불 정박</span></b><br />
+          속도: <b><span id="statusBpm">64</span>BPM</b>
         </section>
 
         <p class="notice">장시간 수행 시 화면이 꺼지지 않도록 기기 설정을 확인하세요.</p>
@@ -512,26 +512,38 @@
       const state = {
         target: 108,
         count: 0,
-        rhythm: "steady",
-        bpm: 60,
+        rhythm: "yebul",
+        bpm: 64,
         volume: 0.8,
         running: false,
         timerId: null,
-        signalStep: 0,
+        patternStep: 0,
+        audioPool: [],
+        audioCursor: 0,
         wakeLock: null,
       };
 
       const rhythmLabels = {
-        steady: "정박",
-        irregular: "엇박",
-        signal: "신호용 박자",
+        yebul: "예불 정박",
+        chant: "독경 유동박",
+        samta: "삼타 신호박",
       };
 
       const rhythmDescriptions = {
-        steady: "정박: 선택된 BPM 기준으로 일정한 간격으로 목탁 소리가 납니다.",
-        irregular: "엇박: 기본 BPM의 85% ~ 115% 사이에서 약간 불규칙하게 울립니다.",
-        signal: "신호용 박자: 딱 딱 딱 — 쉼 패턴으로, 실제 소리가 날 때만 카운트됩니다.",
+        yebul: "예불 정박: 예불과 염불 수행처럼 차분하고 고르게 이어지는 기본 목탁 박자입니다.",
+        chant: "독경 유동박: 경문을 따라가듯 강약과 간격이 조금씩 살아나는 스님 독경식 박자입니다.",
+        samta: "삼타 신호박: 의식 전환 때처럼 딱·딱·딱 세 번 치고 길게 쉬는 알림성 박자입니다.",
       };
+
+      const rhythmPatterns = {
+        // 실제 사찰 목탁은 기계식 메트로놈처럼 완전히 동일하지 않으므로
+        // 너무 과장하지 않는 범위에서 사람이 치는 듯한 미세한 호흡을 둔다.
+        yebul: [1, 1, 1, 1],
+        chant: [0.92, 1.04, 0.96, 1.08, 0.9, 1.1, 1.0, 0.98],
+        samta: [0.42, 0.42, 1.85],
+      };
+
+      const silentPatternSteps = {};
 
       const $ = (selector) => document.querySelector(selector);
       const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -541,6 +553,15 @@
       const fallbackMoktak = $("#fallbackMoktak");
       const audio = $("#moktakAudio");
       const completeMessage = $("#completeMessage");
+
+      function prepareAudioPool() {
+        state.audioPool = Array.from({ length: 6 }, () => {
+          const node = audio.cloneNode(true);
+          node.preload = "auto";
+          node.volume = state.volume;
+          return node;
+        });
+      }
 
       moktakImage.addEventListener("error", () => {
         console.warn("moktak.png 파일을 찾을 수 없어 대체 목탁 그래픽을 표시합니다.");
@@ -552,20 +573,29 @@
         console.warn("moktak.mp3 파일을 찾을 수 없습니다. UI와 카운터는 계속 작동합니다.");
       });
 
+      prepareAudioPool();
+
       function baseInterval() {
         return 60000 / state.bpm;
       }
 
+      function currentPattern() {
+        return rhythmPatterns[state.rhythm] || rhythmPatterns.yebul;
+      }
+
       function nextDelay() {
         const base = baseInterval();
-        if (state.rhythm === "irregular") {
-          return base * (0.85 + Math.random() * 0.30);
-        }
-        if (state.rhythm === "signal") {
-          // 3번 빠르게 치고, 한 박자 쉼. 쉼 구간은 scheduleTick에서 소리를 생략한다.
-          return state.signalStep === 3 ? base : base * 0.46;
-        }
-        return base;
+        const pattern = currentPattern();
+        const multiplier = pattern[state.patternStep % pattern.length] || 1;
+        return base * multiplier;
+      }
+
+      function shouldStrikeCurrentStep() {
+        return !(silentPatternSteps[state.rhythm]?.has(state.patternStep % currentPattern().length));
+      }
+
+      function advancePattern() {
+        state.patternStep = (state.patternStep + 1) % currentPattern().length;
       }
 
       function updateDisplay() {
@@ -603,9 +633,11 @@
 
         if (!audio) return;
         try {
-          audio.volume = state.volume;
-          audio.currentTime = 0;
-          await audio.play();
+          const player = state.audioPool[state.audioCursor % state.audioPool.length] || audio;
+          state.audioCursor += 1;
+          player.volume = state.volume;
+          player.currentTime = 0;
+          await player.play();
         } catch (error) {
           // 파일 없음, 권한, 포맷 문제여도 수행 카운터는 멈추지 않는다.
           console.warn("목탁 소리를 재생하지 못했습니다:", error);
@@ -668,26 +700,20 @@
         state.timerId = setTimeout(async () => {
           if (!state.running) return;
 
-          if (state.rhythm === "signal") {
-            if (state.signalStep < 3) {
-              await hit();
-              state.signalStep += 1;
-            } else {
-              // 한 박자 쉼: 카운트 증가 없음
-              state.signalStep = 0;
-            }
-          } else {
+          if (shouldStrikeCurrentStep()) {
             await hit();
           }
+          const delay = nextDelay();
+          advancePattern();
 
-          if (state.running) scheduleTick(nextDelay());
+          if (state.running) scheduleTick(delay);
         }, initialDelay);
       }
 
       async function startPractice(resetCount = false) {
         if (resetCount) {
           state.count = 0;
-          state.signalStep = 0;
+          state.patternStep = 0;
         }
         if (state.count >= state.target) state.count = 0;
 
@@ -710,7 +736,7 @@
       function resetPractice() {
         state.running = false;
         state.count = 0;
-        state.signalStep = 0;
+        state.patternStep = 0;
         clearTimer();
         releaseWakeLock();
         completeMessage.classList.remove("done");
@@ -722,7 +748,7 @@
         button.addEventListener("click", () => {
           state.target = Number(button.dataset.target);
           state.count = 0;
-          state.signalStep = 0;
+          state.patternStep = 0;
           state.running = false;
           clearTimer();
           releaseWakeLock();
@@ -736,7 +762,7 @@
       $$("#rhythmButtons button").forEach((button) => {
         button.addEventListener("click", () => {
           state.rhythm = button.dataset.rhythm;
-          state.signalStep = 0;
+          state.patternStep = 0;
           setSelected("#rhythmButtons", "rhythm", state.rhythm);
           $("#rhythmDesc").textContent = rhythmDescriptions[state.rhythm];
           completeMessage.classList.remove("done");
@@ -765,6 +791,7 @@
       $("#volumeSlider").addEventListener("input", (event) => {
         state.volume = Number(event.target.value);
         audio.volume = state.volume;
+        state.audioPool.forEach((node) => { node.volume = state.volume; });
         updateDisplay();
       });
 
