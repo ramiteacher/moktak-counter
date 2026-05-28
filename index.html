@@ -262,6 +262,16 @@
       box-shadow: 0 0 30px rgba(214, 168, 79, 0.12);
     }
 
+    .prep-status {
+      min-height: 42px;
+      margin-top: 10px;
+      color: #ffd978;
+      font-weight: 800;
+      font-size: clamp(1rem, 3vw, 1.35rem);
+      letter-spacing: -0.03em;
+      text-shadow: 0 0 20px rgba(255, 217, 120, 0.20);
+    }
+
     .controls-card {
       padding: clamp(18px, 3.6vw, 28px);
       display: flex;
@@ -440,6 +450,7 @@
         <div id="completeMessage" class="complete-message" aria-live="polite">
           고요한 마음으로 시작 버튼을 눌러 수행을 시작하세요.
         </div>
+        <div id="prepStatus" class="prep-status" aria-live="polite"></div>
       </article>
 
       <aside class="card controls-card">
@@ -477,6 +488,16 @@
         </section>
 
         <section>
+          <h2 class="section-title">시작 전 준비</h2>
+          <div class="speed-row" id="countdownButtons">
+            <button type="button" data-countdown="3">3초</button>
+            <button type="button" data-countdown="5" class="selected">5초</button>
+            <button type="button" data-countdown="10">10초</button>
+          </div>
+          <p class="rhythm-desc">시작 전 카운트다운 뒤 인사 목탁 3타와 반배 목탁 3번을 먼저 진행합니다. 이 준비 목탁은 수행 횟수에 포함되지 않습니다.</p>
+        </section>
+
+        <section>
           <h2 class="section-title">소리</h2>
           <div class="volume-row">
             <label for="volumeSlider">소리 크기</label>
@@ -499,7 +520,8 @@
         <section class="status-box" aria-live="polite">
           목표 횟수: <b><span id="statusTarget">108</span>번</b><br />
           리듬: <b><span id="statusRhythm">예불 정박</span></b><br />
-          속도: <b><span id="statusBpm">64</span>BPM</b>
+          속도: <b><span id="statusBpm">64</span>BPM</b><br />
+          시작 전: <b><span id="statusCountdown">5</span>초 + 인사 목탁 + 반배 3번</b>
         </section>
 
         <p class="notice">장시간 수행 시 화면이 꺼지지 않도록 기기 설정을 확인하세요.</p>
@@ -515,11 +537,15 @@
         rhythm: "yebul",
         bpm: 64,
         volume: 0.8,
+        countdownSeconds: 5,
         running: false,
+        preparing: false,
         timerId: null,
+        prepTimerIds: [],
         patternStep: 0,
         audioPool: [],
         audioCursor: 0,
+        runToken: 0,
         wakeLock: null,
       };
 
@@ -553,6 +579,7 @@
       const fallbackMoktak = $("#fallbackMoktak");
       const audio = $("#moktakAudio");
       const completeMessage = $("#completeMessage");
+      const prepStatus = $("#prepStatus");
 
       function prepareAudioPool() {
         state.audioPool = Array.from({ length: 6 }, () => {
@@ -610,6 +637,7 @@
         $("#statusTarget").textContent = state.target.toLocaleString("ko-KR");
         $("#statusRhythm").textContent = rhythmLabels[state.rhythm];
         $("#statusBpm").textContent = state.bpm;
+        $("#statusCountdown").textContent = state.countdownSeconds;
         $("#bpmValue").textContent = state.bpm;
         $("#volumeValue").textContent = `${Math.round(state.volume * 100)}%`;
       }
@@ -668,8 +696,64 @@
         }
       }
 
+      function clearPrepTimers() {
+        state.prepTimerIds.forEach((id) => clearTimeout(id));
+        state.prepTimerIds = [];
+        state.preparing = false;
+        prepStatus.textContent = "";
+      }
+
+      function ritualSleep(ms, token) {
+        return new Promise((resolve) => {
+          const id = setTimeout(() => resolve(state.runToken === token), ms);
+          state.prepTimerIds.push(id);
+        });
+      }
+
+      async function playRitualStrike(label, token, waitMs = 900) {
+        if (state.runToken !== token) return false;
+        prepStatus.textContent = label;
+        await playSound();
+        return ritualSleep(waitMs, token);
+      }
+
+      async function runOpeningPrelude(token) {
+        state.preparing = true;
+        state.running = false;
+        state.patternStep = 0;
+        completeMessage.classList.remove("done");
+
+        for (let left = state.countdownSeconds; left > 0; left -= 1) {
+          if (state.runToken !== token) return false;
+          prepStatus.textContent = `시작 전 카운트다운 ${left}`;
+          completeMessage.textContent = "자세를 바로 하고 호흡을 고요히 준비하세요.";
+          const ok = await ritualSleep(1000, token);
+          if (!ok) return false;
+        }
+
+        completeMessage.textContent = "인사/예불 시작 목탁이 울립니다.";
+        const introWaits = [1050, 1200, 1500];
+        for (let i = 0; i < introWaits.length; i += 1) {
+          const ok = await playRitualStrike(`인사 목탁 ${i + 1}/3`, token, introWaits[i]);
+          if (!ok) return false;
+        }
+
+        completeMessage.textContent = "반배 목탁 3번을 진행합니다.";
+        for (let i = 0; i < 3; i += 1) {
+          const ok = await playRitualStrike(`반배 ${i + 1}/3`, token, 1450);
+          if (!ok) return false;
+        }
+
+        prepStatus.textContent = "본 수행을 시작합니다.";
+        await ritualSleep(650, token);
+        prepStatus.textContent = "";
+        state.preparing = false;
+        return state.runToken === token;
+      }
+
       function completePractice() {
         clearTimer();
+        clearPrepTimers();
         state.running = false;
         releaseWakeLock();
         completeMessage.classList.add("done");
@@ -711,33 +795,51 @@
       }
 
       async function startPractice(resetCount = false) {
-        if (resetCount) {
+        if (state.preparing) return;
+
+        const needsPrelude = resetCount || state.count === 0 || state.count >= state.target;
+        if (resetCount || state.count >= state.target) {
           state.count = 0;
           state.patternStep = 0;
         }
-        if (state.count >= state.target) state.count = 0;
 
-        state.running = true;
+        state.runToken += 1;
+        const token = state.runToken;
+        clearTimer();
+        clearPrepTimers();
         completeMessage.classList.remove("done");
-        completeMessage.textContent = "수행 중입니다. 호흡을 고요히 따라가세요.";
         updateDisplay();
         await requestWakeLock();
+
+        if (needsPrelude) {
+          const ok = await runOpeningPrelude(token);
+          if (!ok) return;
+        }
+
+        state.running = true;
+        state.preparing = false;
+        completeMessage.textContent = "수행 중입니다. 호흡을 고요히 따라가세요.";
+        updateDisplay();
         scheduleTick(0);
       }
 
       function pausePractice() {
+        state.runToken += 1;
         state.running = false;
         clearTimer();
+        clearPrepTimers();
         releaseWakeLock();
         completeMessage.classList.remove("done");
         completeMessage.textContent = "일시정지되었습니다. 다시 시작을 누르면 처음부터, 시작을 누르면 이어서 진행됩니다.";
       }
 
       function resetPractice() {
+        state.runToken += 1;
         state.running = false;
         state.count = 0;
         state.patternStep = 0;
         clearTimer();
+        clearPrepTimers();
         releaseWakeLock();
         completeMessage.classList.remove("done");
         completeMessage.textContent = "고요한 마음으로 시작 버튼을 눌러 수행을 시작하세요.";
@@ -749,8 +851,10 @@
           state.target = Number(button.dataset.target);
           state.count = 0;
           state.patternStep = 0;
+          state.runToken += 1;
           state.running = false;
           clearTimer();
+          clearPrepTimers();
           releaseWakeLock();
           setSelected("#targetButtons", "target", state.target);
           completeMessage.classList.remove("done");
@@ -786,6 +890,16 @@
         const matching = $(`#speedButtons button[data-bpm="${state.bpm}"]`);
         if (matching) matching.classList.add("selected");
         updateDisplay();
+      });
+
+      $$("#countdownButtons button").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.countdownSeconds = Number(button.dataset.countdown);
+          setSelected("#countdownButtons", "countdown", state.countdownSeconds);
+          completeMessage.classList.remove("done");
+          completeMessage.textContent = `시작 전 카운트다운을 ${state.countdownSeconds}초로 설정했습니다.`;
+          updateDisplay();
+        });
       });
 
       $("#volumeSlider").addEventListener("input", (event) => {
