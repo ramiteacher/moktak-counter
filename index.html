@@ -489,12 +489,7 @@
 
         <section>
           <h2 class="section-title">시작 전 준비</h2>
-          <div class="speed-row" id="countdownButtons">
-            <button type="button" data-countdown="3">3초</button>
-            <button type="button" data-countdown="5" class="selected">5초</button>
-            <button type="button" data-countdown="10">10초</button>
-          </div>
-          <p class="rhythm-desc">시작 전 카운트다운 뒤 인사 목탁 3타와 반배 목탁 3번을 먼저 진행합니다. 이 준비 목탁은 수행 횟수에 포함되지 않습니다.</p>
+          <p class="rhythm-desc">시작 버튼을 누르면 반배 목탁 3번이 카운트다운처럼 먼저 울립니다. 이 3번은 수행 횟수에 포함되지 않습니다.</p>
         </section>
 
         <section>
@@ -521,7 +516,7 @@
           목표 횟수: <b><span id="statusTarget">108</span>번</b><br />
           리듬: <b><span id="statusRhythm">예불 정박</span></b><br />
           속도: <b><span id="statusBpm">64</span>BPM</b><br />
-          시작 전: <b><span id="statusCountdown">5</span>초 + 인사 목탁 + 반배 3번</b>
+          시작 전: <b>반배 목탁 3번 / 카운트 제외</b>
         </section>
 
         <p class="notice">장시간 수행 시 화면이 꺼지지 않도록 기기 설정을 확인하세요.</p>
@@ -537,7 +532,6 @@
         rhythm: "yebul",
         bpm: 64,
         volume: 0.8,
-        countdownSeconds: 5,
         running: false,
         preparing: false,
         timerId: null,
@@ -637,7 +631,6 @@
         $("#statusTarget").textContent = state.target.toLocaleString("ko-KR");
         $("#statusRhythm").textContent = rhythmLabels[state.rhythm];
         $("#statusBpm").textContent = state.bpm;
-        $("#statusCountdown").textContent = state.countdownSeconds;
         $("#bpmValue").textContent = state.bpm;
         $("#volumeValue").textContent = `${Math.round(state.volume * 100)}%`;
       }
@@ -722,43 +715,19 @@
         state.running = false;
         state.patternStep = 0;
         completeMessage.classList.remove("done");
+        completeMessage.textContent = "반배 목탁 3번 후 본 수행을 시작합니다.";
 
-        for (let left = state.countdownSeconds; left > 0; left -= 1) {
-          if (state.runToken !== token) return false;
-          prepStatus.textContent = `시작 전 카운트다운 ${left}`;
-          completeMessage.textContent = "자세를 바로 하고 호흡을 고요히 준비하세요.";
-          const ok = await ritualSleep(1000, token);
-          if (!ok) return false;
-        }
-
-        completeMessage.textContent = "인사/예불 시작 목탁이 울립니다.";
-        const introWaits = [1050, 1200, 1500];
-        for (let i = 0; i < introWaits.length; i += 1) {
-          const ok = await playRitualStrike(`인사 목탁 ${i + 1}/3`, token, introWaits[i]);
-          if (!ok) return false;
-        }
-
-        completeMessage.textContent = "반배 목탁 3번을 진행합니다.";
         for (let i = 0; i < 3; i += 1) {
-          const ok = await playRitualStrike(`반배 ${i + 1}/3`, token, 1450);
+          const remain = 3 - i;
+          const ok = await playRitualStrike(`반배 카운트다운 ${remain}`, token, 1300);
           if (!ok) return false;
         }
 
         prepStatus.textContent = "본 수행을 시작합니다.";
-        await ritualSleep(650, token);
+        await ritualSleep(500, token);
         prepStatus.textContent = "";
         state.preparing = false;
         return state.runToken === token;
-      }
-
-      function completePractice() {
-        clearTimer();
-        clearPrepTimers();
-        state.running = false;
-        releaseWakeLock();
-        completeMessage.classList.add("done");
-        completeMessage.innerHTML = "<strong>수행이 완료되었습니다.</strong><br />오늘의 마음을 고요히 마무리하세요.";
-        updateDisplay();
       }
 
       async function hit() {
@@ -890,16 +859,6 @@
         const matching = $(`#speedButtons button[data-bpm="${state.bpm}"]`);
         if (matching) matching.classList.add("selected");
         updateDisplay();
-      });
-
-      $$("#countdownButtons button").forEach((button) => {
-        button.addEventListener("click", () => {
-          state.countdownSeconds = Number(button.dataset.countdown);
-          setSelected("#countdownButtons", "countdown", state.countdownSeconds);
-          completeMessage.classList.remove("done");
-          completeMessage.textContent = `시작 전 카운트다운을 ${state.countdownSeconds}초로 설정했습니다.`;
-          updateDisplay();
-        });
       });
 
       $("#volumeSlider").addEventListener("input", (event) => {
