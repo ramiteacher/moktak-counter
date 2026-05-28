@@ -416,10 +416,12 @@
     .status-box b { color: #ffe8ad; }
 
     .notice {
-      color: rgba(244, 224, 184, 0.72);
-      font-size: 0.88rem;
+      color: #ffd978;
+      font-size: 0.9rem;
       line-height: 1.5;
       padding-left: 2px;
+      font-weight: 800;
+      text-shadow: 0 0 16px rgba(255, 217, 120, 0.24);
     }
 
     .sr-only {
@@ -454,7 +456,7 @@
   <main class="page">
     <header>
       <h1>목탁 수행 카운터</h1>
-      <p class="subtitle">108번부터 10000번까지, 일정한 박자로 수행하세요.</p>
+      <p class="subtitle">108배부터 10000배까지<br />일정한 박자로 수행하세요.</p>
     </header>
 
     <section class="layout" aria-label="목탁 수행 카운터 앱">
@@ -478,7 +480,7 @@
         </div>
 
         <div id="completeMessage" class="complete-message" aria-live="polite">
-          고요한 마음으로 시작 버튼을 눌러 수행을 시작하세요.
+          고요한 마음으로 시작버튼을<br />눌러 수행을 시작하세요.
         </div>
         <div id="prepStatus" class="prep-status" aria-live="polite"></div>
       </article>
@@ -844,7 +846,7 @@
         clearPrepTimers();
         releaseWakeLock();
         completeMessage.classList.remove("done");
-        completeMessage.textContent = "고요한 마음으로 시작 버튼을 눌러 수행을 시작하세요.";
+        completeMessage.innerHTML = "고요한 마음으로 시작버튼을<br />눌러 수행을 시작하세요.";
         updateDisplay();
       }
 
