@@ -424,6 +424,39 @@
       text-shadow: 0 0 16px rgba(255, 217, 120, 0.24);
     }
 
+    .site-footer {
+      margin-top: 34px;
+      padding: 22px 18px 26px;
+      border-top: 1px solid rgba(214, 168, 79, 0.18);
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.8;
+    }
+
+    .site-footer .footer-brand {
+      color: var(--gold-bright);
+      font-weight: 800;
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+
+    .site-footer .footer-info span {
+      white-space: nowrap;
+    }
+
+    .site-footer .footer-info span + span::before {
+      content: "|";
+      margin: 0 8px;
+      color: rgba(214, 168, 79, 0.35);
+    }
+
+    .site-footer .footer-copy {
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: rgba(189, 169, 130, 0.65);
+    }
+
     .sr-only {
       position: absolute;
       width: 1px;
@@ -554,6 +587,18 @@
         <p class="notice">장시간 수행 시 화면이 꺼지지 않도록 기기 설정을 확인하세요.</p>
       </aside>
     </section>
+
+    <footer class="site-footer">
+      <div class="footer-brand">손끝모아 주식회사</div>
+      <div class="footer-info">
+        <span>대표 : 김송이</span>
+        <span>사업자등록번호 : 347-81-03832</span>
+      </div>
+      <div class="footer-info">
+        <span>주소 : 서울특별시 강동구 천중로 196, 6층 602호(길동, 정일빌딩)</span>
+      </div>
+      <div class="footer-copy">&copy; 2026 손끝모아 주식회사. All rights reserved.</div>
+    </footer>
   </main>
 
   <script>
